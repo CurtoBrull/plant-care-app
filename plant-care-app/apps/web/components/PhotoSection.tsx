@@ -17,11 +17,19 @@ export default function PhotoSection({ plant, onUpdated }: Props) {
   const [error,     setError]     = useState('')
   const [success,   setSuccess]   = useState('')
   const [confirm,   setConfirm]   = useState<string | null>(null) // photoId pendiente de borrar
+  const [lightbox,  setLightbox]  = useState<Photo | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void loadPhotos()
   }, [plant.id])
+
+  useEffect(() => {
+    if (!lightbox) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightbox(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox])
 
   async function loadPhotos() {
     setLoading(true)
@@ -131,6 +139,8 @@ export default function PhotoSection({ plant, onUpdated }: Props) {
                 height={150}
                 className="photo-thumb"
                 unoptimized
+                style={{ cursor: 'zoom-in' }}
+                onClick={() => setLightbox(photo)}
               />
               <div className="photo-item-actions">
                 {/* Marcar como representativa */}
@@ -156,6 +166,45 @@ export default function PhotoSection({ plant, onUpdated }: Props) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out',
+          }}
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            style={{
+              position: 'absolute', top: '1rem', right: '1.25rem',
+              background: 'none', border: 'none', color: 'white',
+              fontSize: '2rem', cursor: 'pointer', lineHeight: 1,
+            }}
+            aria-label="Cerrar"
+          >×</button>
+          <Image
+            src={lightbox.url}
+            alt={`Foto del ${new Date(lightbox.capturedAt).toLocaleDateString('es-ES')}`}
+            width={1200}
+            height={900}
+            unoptimized
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh',
+              objectFit: 'contain', borderRadius: '8px',
+              cursor: 'default',
+            }}
+          />
+          <p style={{ position: 'absolute', bottom: '1rem', color: '#ccc', fontSize: '.85rem' }}>
+            {new Date(lightbox.capturedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
         </div>
       )}
     </div>
