@@ -30,7 +30,7 @@ Si SÍ es una planta, responde con este esquema:
   "commonName": "<nombre común en español>",
   "species": "<género y especie, ej: Monstera deliciosa>",
   "scientificName": "<nombre científico completo>",
-  "description": "<descripción breve, 1-2 frases>",
+  "description": "<descripción de 3-5 frases en español que incluya: qué es la planta y su origen, sus cuidados básicos principales (riego, luz, temperatura), si es apta para interior o exterior, y algún consejo útil o curiosidad>",
   "location": "<interior|exterior>",
   "careSchedule": {
     "wateringFrequencyDays": <entero, días entre riegos>,

@@ -60,6 +60,11 @@ export interface INotificationService {
     snoozeReminder(reminder: Reminder, days: SnoozeDays): Reminder
 
     /**
+     * Recupera si los recordatorios globales están activados.
+     */
+    getGlobalEnabled(userId: string): Promise<boolean>
+
+    /**
      * Activa o desactiva los recordatorios globales del usuario.
      * Persiste la preferencia en la tabla `users`.
      * Requisito 6.2
@@ -128,6 +133,17 @@ export class NotificationService implements INotificationService {
     }
 
     // ── Activar / desactivar recordatorios globales ────────────────────────────
+
+    async getGlobalEnabled(userId: string): Promise<boolean> {
+        const { data, error } = await this.db
+            .from('users')
+            .select('notifications_enabled')
+            .eq('id', userId)
+            .single()
+
+        if (error) throw new NotificationServiceError(NotificationServiceErrorCode.UNKNOWN, error.message)
+        return (data as { notifications_enabled: boolean }).notifications_enabled ?? false
+    }
 
     async setGlobalEnabled(userId: string, enabled: boolean): Promise<void> {
         const { error } = await this.db

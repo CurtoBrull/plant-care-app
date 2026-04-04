@@ -19,8 +19,12 @@ export default function SettingsPage() {
     if (!userId) return
     async function load() {
       try {
-        const time = await getNotificationService().getReminderTime(userId)
-        if (time) setReminderTime(time)
+        const [time, enabled] = await Promise.all([
+          getNotificationService().getReminderTime(userId),
+          getNotificationService().getGlobalEnabled(userId),
+        ])
+        if (time) setReminderTime(time.slice(0, 5))
+        setGlobalEnabled(enabled)
       } catch {
         // Usar valor por defecto
       } finally {
