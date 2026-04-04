@@ -1,0 +1,28 @@
+{
+  "name": "mobile",
+  "version": "0.0.1",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@plant-care/core": "workspace:*",
+    "@supabase/supabase-js": "^2.45.0",
+    "@react-native-async-storage/async-storage": "^2.0.0",
+    "@react-native-community/netinfo": "^11.3.0",
+    "expo": "~51.0.0",
+    "expo-router": "~3.5.0",
+    "expo-image-picker": "~15.0.0",
+    "expo-notifications": "~0.28.0",
+    "react": "18.2.0",
+    "react-native": "0.74.0"
+  },
+  "devDependencies": {
+    "@types/react": "~18.2.0",
+    "@babel/core": "^7.24.0"
+  }
+}
