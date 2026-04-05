@@ -59,6 +59,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="main-content">
         {children}
       </main>
+
+      {/* ── Bottom nav (móvil) ── */}
+      <nav className="bottom-nav">
+        <Link href="/plants" className={`${isPlants ? 'active' : ''}`}>
+          <span className="nav-icon">🪴</span>
+          Plantas
+        </Link>
+        <Link href="/settings" className={`${isSettings ? 'active' : ''}`}>
+          <span className="nav-icon">🔔</span>
+          Ajustes
+        </Link>
+        <button onClick={() => { void signOut().then(() => router.replace('/login')) }}>
+          <span className="nav-icon">🚪</span>
+          Salir
+        </button>
+      </nav>
     </div>
   )
 }
