@@ -3,35 +3,51 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import type { Plant } from '@plant-care/core'
+import type { Plant, PlantType } from '@plant-care/core'
 import { getPlantService } from '@/lib/services'
 import { useAuth } from '@/components/AuthProvider'
+
+const PLANT_TYPE_LABELS: Record<PlantType, string> = {
+  suculenta: 'Suculenta',
+  cactus:    'Cactus',
+  tropical:  'Tropical',
+  herbácea:  'Herbácea',
+  frutal:    'Frutal',
+  arbusto:   'Arbusto',
+  árbol:     'Árbol',
+  acuática:  'Acuática',
+  otra:      'Otra',
+}
 
 export default function PlantsPage() {
   const { user } = useAuth()
 
-  const [plants,  setPlants]  = useState<Plant[]>([])
-  const [query,   setQuery]   = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+  const [allPlants, setAllPlants] = useState<Plant[]>([])
+  const [plants,    setPlants]    = useState<Plant[]>([])
+  const [query,     setQuery]     = useState('')
+  const [typeFilter, setTypeFilter] = useState<PlantType | ''>('')
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (user?.id) void loadPlants(user.id)
   }, [user?.id])
 
+  // Apply text search + type filter whenever they change
   useEffect(() => {
     if (!user?.id) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { void search(user.id, query) }, 300)
+    debounceRef.current = setTimeout(() => { void applyFilters(user.id, query, typeFilter) }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query, user?.id])
+  }, [query, typeFilter, user?.id])
 
   async function loadPlants(userId: string) {
     setLoading(true)
     setError('')
     try {
       const data = await getPlantService().getPlants(userId)
+      setAllPlants(data)
       setPlants(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar las plantas')
@@ -40,11 +56,18 @@ export default function PlantsPage() {
     }
   }
 
-  async function search(userId: string, q: string) {
-    if (!q.trim()) { void loadPlants(userId); return }
+  async function applyFilters(userId: string, q: string, type: PlantType | '') {
     setLoading(true)
     try {
-      const data = await getPlantService().searchPlants(userId, q.trim())
+      let data: Plant[]
+      if (q.trim()) {
+        data = await getPlantService().searchPlants(userId, q.trim())
+      } else {
+        data = allPlants.length > 0 ? allPlants : await getPlantService().getPlants(userId)
+      }
+      if (type) {
+        data = data.filter((p) => p.plantType === type)
+      }
       setPlants(data)
     } catch {
       // Mantener lista actual si falla la búsqueda
@@ -53,6 +76,11 @@ export default function PlantsPage() {
     }
   }
 
+  // The active type filter labels shown as chips
+  const activeTypes: PlantType[] = [...new Set(allPlants.map((p) => p.plantType).filter((t): t is PlantType => !!t))]
+
+  const hasFilters = !!query || !!typeFilter
+
   return (
     <>
       <div className="page-header">
@@ -60,7 +88,7 @@ export default function PlantsPage() {
         <Link href="/plants/new" className="btn btn-primary">+ Añadir planta</Link>
       </div>
 
-      <div className="search-bar" style={{ marginBottom: '1.5rem' }}>
+      <div className="search-bar" style={{ marginBottom: '1rem' }}>
         <span className="search-icon">🔍</span>
         <input
           type="search"
@@ -71,6 +99,46 @@ export default function PlantsPage() {
         />
       </div>
 
+      {activeTypes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem', marginBottom: '1.5rem' }}>
+          <button
+            onClick={() => setTypeFilter('')}
+            style={{
+              padding: '.3rem .85rem',
+              borderRadius: '999px',
+              border: '1.5px solid var(--border)',
+              background: typeFilter === '' ? 'var(--primary)' : 'transparent',
+              color: typeFilter === '' ? '#fff' : 'var(--text)',
+              fontSize: '.85rem',
+              cursor: 'pointer',
+              fontWeight: typeFilter === '' ? 600 : 400,
+              transition: 'all .15s',
+            }}
+          >
+            Todas
+          </button>
+          {activeTypes.map((type) => (
+            <button
+              key={type}
+              onClick={() => setTypeFilter(typeFilter === type ? '' : type)}
+              style={{
+                padding: '.3rem .85rem',
+                borderRadius: '999px',
+                border: '1.5px solid var(--border)',
+                background: typeFilter === type ? 'var(--primary)' : 'transparent',
+                color: typeFilter === type ? '#fff' : 'var(--text)',
+                fontSize: '.85rem',
+                cursor: 'pointer',
+                fontWeight: typeFilter === type ? 600 : 400,
+                transition: 'all .15s',
+              }}
+            >
+              {PLANT_TYPE_LABELS[type]}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && <div className="alert alert-error">{error}</div>}
 
       {loading ? (
@@ -78,8 +146,8 @@ export default function PlantsPage() {
       ) : plants.length === 0 ? (
         <div className="empty-state">
           <div className="icon">🌱</div>
-          {query ? (
-            <p>No se encontraron plantas para <strong>&quot;{query}&quot;</strong></p>
+          {hasFilters ? (
+            <p>No se encontraron plantas{typeFilter ? ` de tipo <strong>${PLANT_TYPE_LABELS[typeFilter]}</strong>` : ''}{query ? ` para "<strong>${query}</strong>"` : ''}</p>
           ) : (
             <>
               <p>Aún no tienes plantas registradas</p>
@@ -110,6 +178,11 @@ export default function PlantsPage() {
               <div className="plant-card-body">
                 <div className="plant-card-name">{plant.commonName}</div>
                 <div className="plant-card-species">{plant.species}</div>
+                {plant.plantType && (
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: '.2rem' }}>
+                    {PLANT_TYPE_LABELS[plant.plantType]}
+                  </div>
+                )}
               </div>
             </Link>
           ))}

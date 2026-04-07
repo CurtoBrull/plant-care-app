@@ -81,6 +81,7 @@ export class PlantService implements IPlantService {
       ...(data.species !== undefined && { species: data.species }),
       ...(data.scientificName !== undefined && { scientific_name: data.scientificName }),
       ...(data.acquisitionDate !== undefined && { acquisition_date: data.acquisitionDate }),
+      ...(data.plantType !== undefined && { plant_type: data.plantType }),
       ...(data.location !== undefined && { location: data.location }),
       ...(data.notes !== undefined && { notes: data.notes }),
       ...(data.representativePhotoUrl !== undefined && { representative_photo_url: data.representativePhotoUrl }),

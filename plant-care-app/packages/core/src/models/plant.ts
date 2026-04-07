@@ -1,5 +1,6 @@
 export type PlantLocation = 'interior' | 'exterior'
 export type LightNeeds = 'directa' | 'indirecta' | 'sombra'
+export type PlantType = 'suculenta' | 'cactus' | 'tropical' | 'herbácea' | 'frutal' | 'arbusto' | 'árbol' | 'acuática' | 'otra'
 
 export interface CareSchedule {
   wateringFrequencyDays?: number
@@ -26,6 +27,7 @@ export interface Plant {
   species: string
   scientificName?: string
   acquisitionDate?: string   // ISO date
+  plantType?: PlantType
   location?: PlantLocation
   notes?: string
   representativePhotoUrl?: string
@@ -40,6 +42,7 @@ export interface CreatePlantInput {
   species: string
   scientificName?: string
   acquisitionDate?: string
+  plantType?: PlantType
   location?: PlantLocation
   notes?: string
   careSchedule?: CareSchedule
