@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import type { Plant, PlantType } from '@plant-care/core'
@@ -23,7 +23,6 @@ export default function PlantsPage() {
   const { user } = useAuth()
 
   const [allPlants, setAllPlants] = useState<Plant[]>([])
-  const [plants,    setPlants]    = useState<Plant[]>([])
   const [query,     setQuery]     = useState('')
   const [typeFilter, setTypeFilter] = useState<PlantType | ''>('')
   const [loading,   setLoading]   = useState(true)
@@ -34,13 +33,14 @@ export default function PlantsPage() {
     if (user?.id) void loadPlants(user.id)
   }, [user?.id])
 
-  // Apply text search + type filter whenever they change
+  // Debounced text search — refetches from server, preserves allPlants
   useEffect(() => {
     if (!user?.id) return
+    if (!query.trim()) return  // handled by loadPlants / allPlants directly
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { void applyFilters(user.id, query, typeFilter) }, 300)
+    debounceRef.current = setTimeout(() => { void searchPlants(user.id, query) }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query, typeFilter, user?.id])
+  }, [query, user?.id])
 
   async function loadPlants(userId: string) {
     setLoading(true)
@@ -48,7 +48,6 @@ export default function PlantsPage() {
     try {
       const data = await getPlantService().getPlants(userId)
       setAllPlants(data)
-      setPlants(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar las plantas')
     } finally {
@@ -56,19 +55,11 @@ export default function PlantsPage() {
     }
   }
 
-  async function applyFilters(userId: string, q: string, type: PlantType | '') {
+  async function searchPlants(userId: string, q: string) {
     setLoading(true)
     try {
-      let data: Plant[]
-      if (q.trim()) {
-        data = await getPlantService().searchPlants(userId, q.trim())
-      } else {
-        data = allPlants.length > 0 ? allPlants : await getPlantService().getPlants(userId)
-      }
-      if (type) {
-        data = data.filter((p) => p.plantType === type)
-      }
-      setPlants(data)
+      const data = await getPlantService().searchPlants(userId, q.trim())
+      setAllPlants(data)
     } catch {
       // Mantener lista actual si falla la búsqueda
     } finally {
@@ -76,8 +67,23 @@ export default function PlantsPage() {
     }
   }
 
-  // The active type filter labels shown as chips
-  const activeTypes: PlantType[] = [...new Set(allPlants.map((p) => p.plantType).filter((t): t is PlantType => !!t))]
+  // When query is cleared, reload all plants
+  useEffect(() => {
+    if (!user?.id || query.trim()) return
+    void loadPlants(user.id)
+  }, [query, user?.id])
+
+  // Client-side filtering by type on top of current allPlants
+  const plants = useMemo(() => {
+    if (!typeFilter) return allPlants
+    return allPlants.filter((p) => p.plantType === typeFilter)
+  }, [allPlants, typeFilter])
+
+  // Only show chips for types present in allPlants
+  const activeTypes = useMemo<PlantType[]>(() => {
+    const types = allPlants.map((p) => p.plantType).filter((t): t is PlantType => !!t)
+    return [...new Set(types)]
+  }, [allPlants])
 
   const hasFilters = !!query || !!typeFilter
 
