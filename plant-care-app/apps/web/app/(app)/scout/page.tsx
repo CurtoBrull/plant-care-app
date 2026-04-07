@@ -18,22 +18,29 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export default function ScoutPage() {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview]   = useState<string | null>(null)
-  const [loading, setLoading]   = useState(false)
-  const [error,   setError]     = useState('')
-  const [result,  setResult]    = useState<PlantScoutResult | null>(null)
+  // Two separate inputs: camera (capture) and gallery
+  const cameraRef  = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
+
+  // Single active file ref — points to whichever input was last used
+  const activeFileRef = useRef<HTMLInputElement | null>(null)
+
+  const [preview, setPreview] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  const [result,  setResult]  = useState<PlantScoutResult | null>(null)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    activeFileRef.current = e.currentTarget
     setPreview(URL.createObjectURL(file))
     setResult(null)
     setError('')
   }
 
   async function handleIdentify() {
-    const file = fileRef.current?.files?.[0]
+    const file = activeFileRef.current?.files?.[0]
     if (!file) return
     setLoading(true)
     setError('')
@@ -56,7 +63,9 @@ export default function ScoutPage() {
     setResult(null)
     setPreview(null)
     setError('')
-    if (fileRef.current) fileRef.current.value = ''
+    if (cameraRef.current)  cameraRef.current.value  = ''
+    if (galleryRef.current) galleryRef.current.value = ''
+    activeFileRef.current = null
   }
 
   return (
@@ -70,9 +79,26 @@ export default function ScoutPage() {
 
       {/* ── Upload card ── */}
       <div className="card" style={{ maxWidth: 680, marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
 
+        {/* Hidden inputs */}
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Preview thumbnail */}
           {preview ? (
             <div style={{ position: 'relative', width: 96, height: 96, flexShrink: 0 }}>
               <Image
@@ -90,23 +116,41 @@ export default function ScoutPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '2rem', color: 'var(--text-muted)',
             }}>
-              📷
+              🌿
             </div>
           )}
 
+          {/* Action buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '.5rem' }}>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
-              {preview ? '🔄 Cambiar foto' : '📷 Seleccionar foto'}
-            </button>
-            {preview && !loading && (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleIdentify()}>
-                🔍 Analizar con IA
+            <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => cameraRef.current?.click()}
+                disabled={loading}
+              >
+                📷 Cámara
               </button>
-            )}
-            {loading && (
-              <button type="button" className="btn btn-primary btn-sm" disabled>
-                <span className="spinner" /> Analizando…
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => galleryRef.current?.click()}
+                disabled={loading}
+              >
+                🖼 Galería
               </button>
+            </div>
+
+            {preview && (
+              loading ? (
+                <button type="button" className="btn btn-primary btn-sm" disabled>
+                  <span className="spinner" /> Analizando…
+                </button>
+              ) : (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleIdentify()}>
+                  🔍 Analizar con IA
+                </button>
+              )
             )}
           </div>
         </div>
@@ -154,12 +198,12 @@ export default function ScoutPage() {
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
-                <Row label="Tipo"         value={result.plantType.charAt(0).toUpperCase() + result.plantType.slice(1)} />
-                <Row label="Dificultad"   value={DIFFICULTY_LABEL[result.difficulty] ?? result.difficulty} />
-                <Row label="Ubicación"    value={LOCATION_LABEL[result.location]     ?? result.location} />
-                <Row label="Luz"          value={LIGHT_LABEL[result.lightNeeds]      ?? result.lightNeeds} />
-                <Row label="Riego"        value={`Cada ${result.wateringFrequencyDays} días`} />
-                <Row label="Temperatura"  value={`${result.temperatureMinC} °C – ${result.temperatureMaxC} °C`} />
+                <Row label="Tipo"        value={result.plantType.charAt(0).toUpperCase() + result.plantType.slice(1)} />
+                <Row label="Dificultad"  value={DIFFICULTY_LABEL[result.difficulty]  ?? result.difficulty} />
+                <Row label="Ubicación"   value={LOCATION_LABEL[result.location]      ?? result.location} />
+                <Row label="Luz"         value={LIGHT_LABEL[result.lightNeeds]       ?? result.lightNeeds} />
+                <Row label="Riego"       value={`Cada ${result.wateringFrequencyDays} días`} />
+                <Row label="Temperatura" value={`${result.temperatureMinC} °C – ${result.temperatureMaxC} °C`} />
                 {result.fertilizingFrequencyDays && (
                   <Row label="Fertilización" value={`Cada ${result.fertilizingFrequencyDays} días${result.fertilizerType ? ` · ${result.fertilizerType}` : ''}`} />
                 )}
