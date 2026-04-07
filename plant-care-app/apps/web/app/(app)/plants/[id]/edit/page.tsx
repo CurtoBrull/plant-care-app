@@ -43,6 +43,7 @@ export default function EditPlantPage() {
         species:         input.species,
         scientificName:  input.scientificName,
         acquisitionDate: input.acquisitionDate,
+        plantType:       input.plantType,
         location:        input.location,
         notes:           input.notes,
         careSchedule:    input.careSchedule ?? {},
