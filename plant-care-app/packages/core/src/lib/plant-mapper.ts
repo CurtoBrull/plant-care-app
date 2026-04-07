@@ -1,7 +1,7 @@
 /**
  * Convierte entre filas de la tabla `plants` (snake_case) y el tipo Plant del dominio (camelCase).
  */
-import type { Plant, CareSchedule, NextCareDates, CreatePlantInput } from '../models/plant'
+import type { Plant, CareSchedule, NextCareDates, CreatePlantInput, PlantType } from '../models/plant'
 
 // Tipo que representa una fila de la tabla plants tal como viene de Supabase
 export interface PlantRow {
@@ -11,6 +11,7 @@ export interface PlantRow {
   species: string
   scientific_name: string | null
   acquisition_date: string | null
+  plant_type: string | null
   location: string | null
   notes: string | null
   representative_photo_url: string | null
@@ -59,6 +60,7 @@ export function rowToPlant(row: PlantRow): Plant {
     species: row.species,
     ...(row.scientific_name != null && { scientificName: row.scientific_name }),
     ...(row.acquisition_date != null && { acquisitionDate: row.acquisition_date }),
+    ...(row.plant_type != null && { plantType: row.plant_type as PlantType }),
     ...(row.location != null && { location: row.location as Plant['location'] }),
     ...(row.notes != null && { notes: row.notes }),
     ...(row.representative_photo_url != null && { representativePhotoUrl: row.representative_photo_url }),
@@ -80,6 +82,7 @@ export function plantInputToRow(
     species: input.species,
     scientific_name: input.scientificName ?? null,
     acquisition_date: input.acquisitionDate ?? null,
+    plant_type: input.plantType ?? null,
     location: input.location ?? null,
     notes: input.notes ?? null,
     representative_photo_url: null,

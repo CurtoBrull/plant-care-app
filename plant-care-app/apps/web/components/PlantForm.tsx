@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { CreatePlantInput, Plant } from '@plant-care/core'
+import type { CreatePlantInput, Plant, PlantType } from '@plant-care/core'
 
 interface AIHints {
   location?: 'interior' | 'exterior'
@@ -18,6 +18,18 @@ interface Props {
 
 const locationLabel: Record<string, string> = { interior: 'Interior', exterior: 'Exterior' }
 const lightLabel: Record<string, string> = { directa: 'Directa', indirecta: 'Indirecta', sombra: 'Sombra' }
+
+const PLANT_TYPES: { value: PlantType; label: string }[] = [
+  { value: 'suculenta', label: 'Suculenta' },
+  { value: 'cactus',    label: 'Cactus' },
+  { value: 'tropical',  label: 'Tropical' },
+  { value: 'herbácea',  label: 'Herbácea' },
+  { value: 'frutal',    label: 'Frutal' },
+  { value: 'arbusto',   label: 'Arbusto' },
+  { value: 'árbol',     label: 'Árbol' },
+  { value: 'acuática',  label: 'Acuática' },
+  { value: 'otra',      label: 'Otra' },
+]
 
 function RecommendedBadge({ text }: { text: string }) {
   return (
@@ -39,6 +51,7 @@ export default function PlantForm({ initialValues, aiHints, onSubmit, onCancel }
   const [species, setSpecies] = useState(initialValues?.species ?? '')
   const [scientificName, setScientificName] = useState(initialValues?.scientificName ?? '')
   const [acquisitionDate, setAcquisitionDate] = useState(initialValues?.acquisitionDate ?? '')
+  const [plantType, setPlantType] = useState(initialValues?.plantType ?? '')
   const [location, setLocation] = useState(initialValues?.location ?? '')
   const [notes, setNotes] = useState(initialValues?.notes ?? '')
 
@@ -62,6 +75,7 @@ export default function PlantForm({ initialValues, aiHints, onSubmit, onCancel }
       species: species.trim(),
       scientificName: scientificName.trim() || undefined,
       acquisitionDate: acquisitionDate || undefined,
+      plantType: (plantType as PlantType) || undefined,
       location: (location as CreatePlantInput['location']) || undefined,
       notes: notes.trim() || undefined,
       careSchedule: {
@@ -115,6 +129,16 @@ export default function PlantForm({ initialValues, aiHints, onSubmit, onCancel }
           <input id="acquisitionDate" type="date" className="form-input"
             value={acquisitionDate} onChange={(e) => setAcquisitionDate(e.target.value)} />
         </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label" htmlFor="plantType">Tipo de planta</label>
+        <select id="plantType" className="form-select" value={plantType} onChange={(e) => setPlantType(e.target.value)}>
+          <option value="">— Seleccionar —</option>
+          {PLANT_TYPES.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="form-row">
