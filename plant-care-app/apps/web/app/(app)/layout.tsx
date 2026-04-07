@@ -34,6 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null
 
   const isPlants   = pathname.startsWith('/plants')
+  const isScout    = pathname.startsWith('/scout')
   const isSettings = pathname === '/settings'
 
   return (
@@ -43,6 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="sidebar-logo">🌿 Plant Care</div>
         <nav className="sidebar-nav">
           <Link href="/plants"   className={`nav-link${isPlants   ? ' active' : ''}`}>🪴 Mis plantas</Link>
+          <Link href="/scout"    className={`nav-link${isScout    ? ' active' : ''}`}>🔍 Explorar</Link>
           <Link href="/settings" className={`nav-link${isSettings ? ' active' : ''}`}>🔔 Notificaciones</Link>
         </nav>
         <div className="sidebar-footer">
@@ -65,6 +67,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Link href="/plants" className={`${isPlants ? 'active' : ''}`}>
           <span className="nav-icon">🪴</span>
           Plantas
+        </Link>
+        <Link href="/scout" className={`${isScout ? 'active' : ''}`}>
+          <span className="nav-icon">🔍</span>
+          Explorar
         </Link>
         <Link href="/settings" className={`${isSettings ? 'active' : ''}`}>
           <span className="nav-icon">🔔</span>
