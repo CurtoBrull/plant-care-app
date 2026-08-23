@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Photo } from '../models/photo'
-import { getSupabaseClient } from '../lib/supabase-client'
 
 // ---------------------------------------------------------------------------
 // Errores de dominio
@@ -24,30 +22,6 @@ export enum PhotoServiceErrorCode {
 }
 
 // ---------------------------------------------------------------------------
-// Tipo fila de la tabla photos
-// ---------------------------------------------------------------------------
-
-interface PhotoRow {
-  id: string
-  plant_id: string
-  url: string
-  storage_path: string
-  captured_at: string
-  uploaded_at: string
-}
-
-function rowToPhoto(row: PhotoRow): Photo {
-  return {
-    id: row.id,
-    plantId: row.plant_id,
-    url: row.url,
-    storagePath: row.storage_path,
-    capturedAt: row.captured_at,
-    uploadedAt: row.uploaded_at,
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Interfaz pública
 // ---------------------------------------------------------------------------
 
@@ -59,133 +33,107 @@ export interface IPhotoService {
 }
 
 // ---------------------------------------------------------------------------
-// Implementación
+// Implementación con API Serverless (Vercel Blob + Neon PostgreSQL)
 // ---------------------------------------------------------------------------
 
 export class PhotoService implements IPhotoService {
-  private readonly db: SupabaseClient
+  private readonly baseUrl: string
 
-  constructor(client?: SupabaseClient) {
-    this.db = client ?? getSupabaseClient()
+  constructor(options?: { baseUrl?: string }) {
+    this.baseUrl = options?.baseUrl || ''
   }
 
   // ── Subir foto ─────────────────────────────────────────────────────────────
 
   async uploadPhoto(plantId: string, file: File | Blob, capturedAt?: string): Promise<Photo> {
-    const ext = file instanceof File ? file.name.split('.').pop() ?? 'jpg' : 'jpg'
-    const storagePath = `plants/${plantId}/${Date.now()}.${ext}`
-    const now = new Date().toISOString()
-    const captured = capturedAt ?? now
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('plantId', plantId)
+      if (capturedAt) {
+        formData.append('capturedAt', capturedAt)
+      }
 
-    // 1. Subir binario a Supabase Storage
-    const { error: uploadError } = await this.db.storage
-      .from('plant-photos')
-      .upload(storagePath, file, { upsert: false })
-
-    if (uploadError) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.UPLOAD_FAILED, uploadError.message)
-    }
-
-    // 2. Obtener URL pública
-    const { data: urlData } = this.db.storage
-      .from('plant-photos')
-      .getPublicUrl(storagePath)
-
-    const publicUrl = urlData.publicUrl
-
-    // 3. Insertar metadatos en la tabla photos
-    const { data: photoRow, error: dbError } = await this.db
-      .from('photos')
-      .insert({
-        plant_id: plantId,
-        url: publicUrl,
-        storage_path: storagePath,
-        captured_at: captured,
-        uploaded_at: now,
+      const res = await fetch(`${this.baseUrl}/api/photos/upload`, {
+        method: 'POST',
+        body: formData,
       })
-      .select()
-      .single()
 
-    if (dbError) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.UPLOAD_FAILED, dbError.message)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP error ${res.status}`)
+      }
+
+      const data = await res.json()
+      return data.photo as Photo
+    } catch (err) {
+      throw new PhotoServiceError(
+        PhotoServiceErrorCode.UPLOAD_FAILED,
+        err instanceof Error ? err.message : 'Error al subir foto',
+      )
     }
-
-    return rowToPhoto(photoRow as PhotoRow)
   }
 
   // ── Eliminar foto ──────────────────────────────────────────────────────────
 
   async deletePhoto(photoId: string): Promise<void> {
-    // 1. Recuperar el storage_path antes de eliminar
-    const { data: photoRow, error: fetchError } = await this.db
-      .from('photos')
-      .select('storage_path')
-      .eq('id', photoId)
-      .single()
+    try {
+      const res = await fetch(`${this.baseUrl}/api/photos/${photoId}`, {
+        method: 'DELETE',
+      })
 
-    if (fetchError || !photoRow) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.NOT_FOUND, `Foto ${photoId} no encontrada.`)
-    }
-
-    const storagePath = (photoRow as { storage_path: string }).storage_path
-
-    // 2. Eliminar de Storage
-    const { error: storageError } = await this.db.storage
-      .from('plant-photos')
-      .remove([storagePath])
-
-    if (storageError) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.DELETE_FAILED, storageError.message)
-    }
-
-    // 3. Eliminar metadatos de la tabla photos
-    const { error: dbError } = await this.db
-      .from('photos')
-      .delete()
-      .eq('id', photoId)
-
-    if (dbError) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.DELETE_FAILED, dbError.message)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP error ${res.status}`)
+      }
+    } catch (err) {
+      throw new PhotoServiceError(
+        PhotoServiceErrorCode.DELETE_FAILED,
+        err instanceof Error ? err.message : 'Error al eliminar foto',
+      )
     }
   }
 
   // ── Marcar como imagen representativa ─────────────────────────────────────
 
   async setRepresentativePhoto(plantId: string, photoId: string): Promise<void> {
-    // Recuperar la URL de la foto seleccionada
-    const { data: photoRow, error: fetchError } = await this.db
-      .from('photos')
-      .select('url')
-      .eq('id', photoId)
-      .single()
+    try {
+      const res = await fetch(`${this.baseUrl}/api/photos/${photoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plantId }),
+      })
 
-    if (fetchError || !photoRow) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.NOT_FOUND, `Foto ${photoId} no encontrada.`)
-    }
-
-    const url = (photoRow as { url: string }).url
-
-    // Actualizar representative_photo_url en plants
-    const { error: updateError } = await this.db
-      .from('plants')
-      .update({ representative_photo_url: url })
-      .eq('id', plantId)
-
-    if (updateError) {
-      throw new PhotoServiceError(PhotoServiceErrorCode.UNKNOWN, updateError.message)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP error ${res.status}`)
+      }
+    } catch (err) {
+      throw new PhotoServiceError(
+        PhotoServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al establecer foto representativa',
+      )
     }
   }
 
-  // ── Listar fotos (orden cronológico descendente) ───────────────────────────
+  // ── Listar fotos ───────────────────────────────────────────────────────────
 
   async getPhotos(plantId: string): Promise<Photo[]> {
-    const { data, error } = await this.db
-      .from('photos')
-      .select('*')
-      .eq('plant_id', plantId)
-      .order('captured_at', { ascending: false })
+    try {
+      const res = await fetch(`${this.baseUrl}/api/photos?plantId=${encodeURIComponent(plantId)}`)
 
-    if (error) throw new PhotoServiceError(PhotoServiceErrorCode.UNKNOWN, error.message)
-    return (data as PhotoRow[]).map(rowToPhoto)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP error ${res.status}`)
+      }
+
+      const data = await res.json()
+      return (data.photos || []) as Photo[]
+    } catch (err) {
+      throw new PhotoServiceError(
+        PhotoServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al obtener fotos',
+      )
+    }
   }
 }

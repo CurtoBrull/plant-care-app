@@ -32,7 +32,7 @@ let offline: OfflineSyncService  | null = null
 
 export function getAuthService()         { return (auth    ??= new AuthService(client())) }
 export function getPlantService()        { return (plant   ??= new PlantService(client())) }
-export function getPhotoService()        { return (photo   ??= new PhotoService(client())) }
+export function getPhotoService()        { return (photo   ??= new PhotoService()) }
 export function getCareService()         { return (care    ??= new CareService(client())) }
 export function getProblemService()      { return (problem ??= new ProblemService(client())) }
 export function getNotificationService() { return (notif   ??= new NotificationService(client())) }
