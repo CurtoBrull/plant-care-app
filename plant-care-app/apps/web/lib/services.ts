@@ -30,7 +30,7 @@ let notif:   NotificationService | null = null
 let ai:      AIService           | null = null
 let offline: OfflineSyncService  | null = null
 
-export function getAuthService()         { return (auth    ??= new AuthService(client())) }
+export function getAuthService()         { return (auth    ??= new AuthService()) }
 export function getPlantService()        { return (plant   ??= new PlantService(client())) }
 export function getPhotoService()        { return (photo   ??= new PhotoService()) }
 export function getCareService()         { return (care    ??= new CareService(client())) }

@@ -99,6 +99,12 @@ importers:
       '@vercel/blob':
         specifier: ^0.27.1
         version: 0.27.3
+      bcryptjs:
+        specifier: ^2.4.3
+        version: 2.4.3
+      jose:
+        specifier: ^5.9.6
+        version: 5.10.0
       next:
         specifier: ^14.2.0
         version: 14.2.35(@babel/core@7.29.0(supports-color@8.1.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -109,6 +115,9 @@ importers:
         specifier: ^18.3.0
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@types/bcryptjs':
+        specifier: ^2.4.6
+        version: 2.4.6
       '@types/react':
         specifier: ^18.3.0
         version: 18.3.28
@@ -1813,6 +1822,9 @@ packages:
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
 
+  '@types/bcryptjs@2.4.6':
+    resolution: {integrity: sha512-9xlo6R2qDs5uixm0bcIqCeMCE6HiQsIyel9KQySStiyqNl2tnj2mP3DX1Nf56MD6KMenNNlBBsy3LJ7gUEQPXQ==}
+
   '@types/cookie@0.6.0':
     resolution: {integrity: sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==}
 
@@ -2357,6 +2369,9 @@ packages:
     resolution: {integrity: sha512-BL2sTuHOdy0YT1lYieUxTw/QMtPBC3pmlJC6xk8BBYVv6vcw3SGdKemQ+Xsx9ik2F/lYDO9tqsFQH1r9PFuHKw==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  bcryptjs@2.4.3:
+    resolution: {integrity: sha512-V/Hy/X9Vt7f3BbPJEi8BdVFMByHi+jNXrYkW3huaybV/kQ0KJg0Y6PkEMbn+zeT+i+SiKZ/HMqJGIIt4LZDqNQ==}
 
   better-opn@3.0.2:
     resolution: {integrity: sha512-aVNobHnJqLiUelTaHat9DZ1qM2w0C0Eym4LPI/3JxOnSokGVdsl1T1kN7TFvsEAD8G47A6VKQ0TVHqbBnYMJlQ==}
@@ -3849,6 +3864,9 @@ packages:
 
   join-component@1.1.0:
     resolution: {integrity: sha512-bF7vcQxbODoGK1imE2P9GS9aw4zD0Sd+Hni68IMZLj7zRnquH7dXUmMw9hDI5S/Jzt7q+IyTXN0rSg2GI0IKhQ==}
+
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -8196,6 +8214,8 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@types/bcryptjs@2.4.6': {}
+
   '@types/cookie@0.6.0': {}
 
   '@types/estree@1.0.8': {}
@@ -8789,6 +8809,8 @@ snapshots:
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.10.13: {}
+
+  bcryptjs@2.4.3: {}
 
   better-opn@3.0.2:
     dependencies:
@@ -10548,6 +10570,8 @@ snapshots:
       '@sideway/pinpoint': 2.0.0
 
   join-component@1.1.0: {}
+
+  jose@5.10.0: {}
 
   js-tokens@4.0.0: {}
 

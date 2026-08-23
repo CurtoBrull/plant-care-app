@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '../models/user'
-import { getSupabaseClient } from '../lib/supabase-client'
 
 // ---------------------------------------------------------------------------
 // Errores de dominio
@@ -29,177 +27,147 @@ export enum AuthErrorCode {
 // ---------------------------------------------------------------------------
 
 export interface IAuthService {
-  registerWithEmail(email: string, password: string): Promise<User>
+  registerWithEmail(email: string, password: string, displayName?: string): Promise<User>
   signInWithEmail(email: string, password: string): Promise<User>
   signInWithGoogle(): Promise<User>
   signInWithApple(): Promise<User>
   signOut(): Promise<void>
   getCurrentUser(): User | null
+  getMe(): Promise<User | null>
 }
 
 // ---------------------------------------------------------------------------
-// Mensajes genéricos (Requisito 1.6 — no revelar qué campo falló)
-// ---------------------------------------------------------------------------
-
-const MSG_INVALID_CREDENTIALS = 'Credenciales incorrectas. Revisa tus datos e inténtalo de nuevo.'
-const MSG_EMAIL_IN_USE        = 'El correo electrónico ya está en uso. Prueba a iniciar sesión.'
-const MSG_PROVIDER_ERROR      = 'Error al iniciar sesión con el proveedor. Inténtalo de nuevo.'
-const MSG_UNKNOWN             = 'Ha ocurrido un error inesperado. Inténtalo de nuevo.'
-
-// Palabras clave que Supabase puede devolver para credenciales inválidas
-const INVALID_CREDENTIAL_PATTERNS = [
-  'invalid login credentials',
-  'invalid password',
-  'invalid email',
-  'email not confirmed',
-  'wrong password',
-]
-
-const EMAIL_IN_USE_PATTERNS = [
-  'user already registered',
-  'email already in use',
-  'email address is already',
-]
-
-function classifySupabaseError(message: string): AuthErrorCode {
-  const lower = message.toLowerCase()
-  if (EMAIL_IN_USE_PATTERNS.some((p) => lower.includes(p))) {
-    return AuthErrorCode.EMAIL_ALREADY_IN_USE
-  }
-  if (INVALID_CREDENTIAL_PATTERNS.some((p) => lower.includes(p))) {
-    return AuthErrorCode.INVALID_CREDENTIALS
-  }
-  return AuthErrorCode.UNKNOWN
-}
-
-// ---------------------------------------------------------------------------
-// Mapper: Supabase User → dominio User
-// ---------------------------------------------------------------------------
-
-function mapUser(supabaseUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }): User {
-  return {
-    id: supabaseUser.id,
-    email: supabaseUser.email ?? '',
-    displayName:
-      (supabaseUser.user_metadata?.['full_name'] as string | undefined) ??
-      (supabaseUser.user_metadata?.['name'] as string | undefined) ??
-      (supabaseUser.email?.split('@')[0] ?? ''),
-    notificationsEnabled: true,
-    reminderTime: '08:00',
-    fcmToken: undefined,
-    createdAt: new Date().toISOString(),
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Implementación
+// Implementación conectada a Neon Auth API
 // ---------------------------------------------------------------------------
 
 export class AuthService implements IAuthService {
-  private readonly db: SupabaseClient
+  private readonly baseUrl: string
+  private cachedUser: User | null = null
 
-  constructor(client?: SupabaseClient) {
-    this.db = client ?? getSupabaseClient()
+  constructor(options?: { baseUrl?: string }) {
+    this.baseUrl = options?.baseUrl || ''
   }
 
   // ── Registro ──────────────────────────────────────────────────────────────
 
-  async registerWithEmail(email: string, password: string): Promise<User> {
-    const { data, error } = await this.db.auth.signUp({ email, password })
+  async registerWithEmail(email: string, password: string, displayName?: string): Promise<User> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName }),
+      })
 
-    if (error) {
-      const code = classifySupabaseError(error.message)
-      const msg =
-        code === AuthErrorCode.EMAIL_ALREADY_IN_USE ? MSG_EMAIL_IN_USE : MSG_UNKNOWN
-      throw new AuthError(code, msg)
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        if (res.status === 409) {
+          throw new AuthError(
+            AuthErrorCode.EMAIL_ALREADY_IN_USE,
+            data.error || 'El correo electrónico ya está en uso. Prueba a iniciar sesión.',
+          )
+        }
+        throw new AuthError(
+          AuthErrorCode.UNKNOWN,
+          data.error || 'Ha ocurrido un error inesperado. Inténtalo de nuevo.',
+        )
+      }
+
+      this.cachedUser = data.user as User
+      return this.cachedUser
+    } catch (err) {
+      if (err instanceof AuthError) throw err
+      throw new AuthError(
+        AuthErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al registrar usuario',
+      )
     }
-
-    if (!data.user) {
-      throw new AuthError(AuthErrorCode.UNKNOWN, MSG_UNKNOWN)
-    }
-
-    return mapUser(data.user)
   }
 
   // ── Inicio de sesión email/password ───────────────────────────────────────
 
   async signInWithEmail(email: string, password: string): Promise<User> {
-    const { data, error } = await this.db.auth.signInWithPassword({ email, password })
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    if (error) {
-      const code = classifySupabaseError(error.message)
-      // Requisito 1.6: mensaje genérico sin revelar qué campo falló
-      const msg =
-        code === AuthErrorCode.INVALID_CREDENTIALS
-          ? MSG_INVALID_CREDENTIALS
-          : MSG_UNKNOWN
-      throw new AuthError(code, msg)
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new AuthError(
+            AuthErrorCode.INVALID_CREDENTIALS,
+            data.error || 'Credenciales incorrectas. Revisa tus datos e inténtalo de nuevo.',
+          )
+        }
+        throw new AuthError(
+          AuthErrorCode.UNKNOWN,
+          data.error || 'Ha ocurrido un error inesperado. Inténtalo de nuevo.',
+        )
+      }
+
+      this.cachedUser = data.user as User
+      return this.cachedUser
+    } catch (err) {
+      if (err instanceof AuthError) throw err
+      throw new AuthError(
+        AuthErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al iniciar sesión',
+      )
     }
-
-    if (!data.user) {
-      throw new AuthError(AuthErrorCode.UNKNOWN, MSG_UNKNOWN)
-    }
-
-    return mapUser(data.user)
   }
 
   // ── OAuth: Google ─────────────────────────────────────────────────────────
 
   async signInWithGoogle(): Promise<User> {
-    const { error } = await this.db.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${globalThis.location?.origin ?? ''}/auth/callback` },
-    })
-
-    if (error) {
-      throw new AuthError(AuthErrorCode.PROVIDER_ERROR, MSG_PROVIDER_ERROR)
-    }
-
-    // signInWithOAuth inicia un redirect; el usuario llega con sesión activa
-    // tras el callback. Devolvemos el usuario actual si ya existe.
-    return this._requireCurrentUser()
+    throw new AuthError(
+      AuthErrorCode.PROVIDER_ERROR,
+      'Para autenticación con Google, utiliza el inicio de sesión con email y contraseña.',
+    )
   }
 
   // ── OAuth: Apple ──────────────────────────────────────────────────────────
 
   async signInWithApple(): Promise<User> {
-    const { error } = await this.db.auth.signInWithOAuth({
-      provider: 'apple',
-      options: { redirectTo: `${globalThis.location?.origin ?? ''}/auth/callback` },
-    })
-
-    if (error) {
-      throw new AuthError(AuthErrorCode.PROVIDER_ERROR, MSG_PROVIDER_ERROR)
-    }
-
-    return this._requireCurrentUser()
+    throw new AuthError(
+      AuthErrorCode.PROVIDER_ERROR,
+      'Para autenticación con Apple, utiliza el inicio de sesión con email y contraseña.',
+    )
   }
 
   // ── Cierre de sesión ──────────────────────────────────────────────────────
 
   async signOut(): Promise<void> {
-    const { error } = await this.db.auth.signOut()
-    if (error) {
-      throw new AuthError(AuthErrorCode.UNKNOWN, MSG_UNKNOWN)
+    try {
+      await fetch(`${this.baseUrl}/api/auth/logout`, {
+        method: 'POST',
+      })
+      this.cachedUser = null
+    } catch {
+      this.cachedUser = null
     }
   }
 
   // ── Usuario actual (síncrono) ─────────────────────────────────────────────
 
   getCurrentUser(): User | null {
-    const session = this.db.auth.getSession()
-    // getSession() devuelve una Promise; para acceso síncrono usamos la caché interna
-    const supabaseUser = (this.db as unknown as { auth: { currentUser: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null } }).auth.currentUser
-    return supabaseUser ? mapUser(supabaseUser) : null
+    return this.cachedUser
   }
 
-  // ── Helpers privados ──────────────────────────────────────────────────────
+  // ── Obtener usuario de sesión activo (asíncrono) ───────────────────────────
 
-  private _requireCurrentUser(): User {
-    const user = this.getCurrentUser()
-    if (!user) {
-      throw new AuthError(AuthErrorCode.SESSION_NOT_FOUND, MSG_UNKNOWN)
+  async getMe(): Promise<User | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/me`)
+      if (!res.ok) return null
+      const data = await res.json()
+      this.cachedUser = (data.user || null) as User | null
+      return this.cachedUser
+    } catch {
+      return null
     }
-    return user
   }
 }
