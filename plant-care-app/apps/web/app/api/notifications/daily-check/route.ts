@@ -1,6 +1,7 @@
-import { createClient } from '@supabase/supabase-js'
-import { getDuePlants } from '@plant-care/core'
-import { rowToPlant, type PlantRow } from '@plant-care/core'
+import { getDuePlants, rowToPlant, type PlantRow } from '@plant-care/core'
+import { getDb } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
 
 // ---------------------------------------------------------------------------
 // Tipos internos
@@ -27,41 +28,36 @@ interface FcmSendResult {
 export async function POST(request: Request): Promise<Response> {
   // 1. Validate CRON_SECRET
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
+  if (process.env['CRON_SECRET'] && authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // 2. Build a service-role Supabase client (bypasses RLS to read all users' plants)
-  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
-  const serviceRoleKey = process.env['SUPABASE_SERVICE_ROLE_KEY']
-
-  if (!supabaseUrl || !serviceRoleKey) {
+  // 2. Build a Neon DB client
+  const sql = getDb()
+  if (!sql) {
     return Response.json(
-      { error: 'Missing Supabase environment variables' },
+      { error: 'DATABASE_URL no está configurada' },
       { status: 500 },
     )
   }
 
-  const db = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  })
-
-  // 3. Query all plants with their nextCareDates
-  const { data: plantRows, error: plantsError } = await db
-    .from('plants')
-    .select(
-      'id, user_id, common_name, species, scientific_name, acquisition_date, location, notes, representative_photo_url, ' +
-      'watering_frequency_days, fertilizing_frequency_days, fertilizer_type, light_needs, ' +
-      'temperature_min_c, temperature_max_c, pruning_frequency_months, repotting_frequency_months, ' +
-      'next_watering_date, next_fertilizing_date, next_pruning_date, next_repotting_date, ' +
-      'created_at, updated_at',
-    )
-
-  if (plantsError) {
-    return Response.json({ error: plantsError.message }, { status: 500 })
+  // 3. Query all plants with their nextCareDates from Neon
+  let plantRows: PlantRow[]
+  try {
+    const rows = await sql`
+      SELECT id, user_id, common_name, species, scientific_name, acquisition_date, location, notes, representative_photo_url,
+             watering_frequency_days, fertilizing_frequency_days, fertilizer_type, light_needs,
+             temperature_min_c, temperature_max_c, pruning_frequency_months, repotting_frequency_months,
+             next_watering_date, next_fertilizing_date, next_pruning_date, next_repotting_date,
+             created_at, updated_at
+      FROM plants
+    `
+    plantRows = rows as unknown as PlantRow[]
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : 'Error al consultar plantas en Neon' }, { status: 500 })
   }
 
-  const plants = (plantRows as unknown as PlantRow[]).map(rowToPlant)
+  const plants = plantRows.map(rowToPlant)
 
   // 4. Filter plants with due tasks (nextCareDate <= today)
   const today = new Date()
@@ -74,17 +70,20 @@ export async function POST(request: Request): Promise<Response> {
   // 5. Fetch user settings (fcm_token + notifications_enabled) for affected users
   const userIds = [...new Set(duePlants.map((p) => p.userId))]
 
-  const { data: userRows, error: usersError } = await db
-    .from('users')
-    .select('id, fcm_token, notifications_enabled')
-    .in('id', userIds)
-
-  if (usersError) {
-    return Response.json({ error: usersError.message }, { status: 500 })
+  let userRows: UserRow[] = []
+  try {
+    const rows = await sql`
+      SELECT id, fcm_token, notifications_enabled
+      FROM users
+      WHERE id = ANY(${userIds})
+    `
+    userRows = rows as unknown as UserRow[]
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : 'Error al consultar usuarios en Neon' }, { status: 500 })
   }
 
   const userMap = new Map<string, UserRow>(
-    (userRows as UserRow[]).map((u) => [u.id, u]),
+    userRows.map((u) => [u.id, u]),
   )
 
   // 6. Send FCM push notification for each due plant

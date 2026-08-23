@@ -1,3 +1,11 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+allowBuilds:
+  esbuild: true
+  msw: true
+  unrs-resolver: true
+onlyBuiltDependencies:
+  - esbuild
+  - msw
+  - unrs-resolver
