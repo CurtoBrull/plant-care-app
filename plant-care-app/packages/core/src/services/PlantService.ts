@@ -1,8 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Plant, CreatePlantInput } from '../models/plant'
-import type { CareSchedule } from '../models/plant'
-import { getSupabaseClient } from '../lib/supabase-client'
-import { rowToPlant, plantInputToRow, careScheduleToRow, type PlantRow } from '../lib/plant-mapper'
+import type { Plant, CreatePlantInput, CareSchedule } from '../models/plant'
 
 // ---------------------------------------------------------------------------
 // Errores de dominio
@@ -38,14 +34,14 @@ export interface IPlantService {
 }
 
 // ---------------------------------------------------------------------------
-// Implementación
+// Implementación con REST API (Neon PostgreSQL)
 // ---------------------------------------------------------------------------
 
 export class PlantService implements IPlantService {
-  private readonly db: SupabaseClient
+  private readonly baseUrl: string
 
-  constructor(client?: SupabaseClient) {
-    this.db = client ?? getSupabaseClient()
+  constructor(options?: { baseUrl?: string }) {
+    this.baseUrl = options?.baseUrl || ''
   }
 
   // ── Crear planta ───────────────────────────────────────────────────────────
@@ -58,15 +54,30 @@ export class PlantService implements IPlantService {
       throw new PlantServiceError(PlantServiceErrorCode.VALIDATION, 'La especie es obligatoria.')
     }
 
-    const row = plantInputToRow(userId, data)
-    const { data: inserted, error } = await this.db
-      .from('plants')
-      .insert(row)
-      .select()
-      .single()
+    try {
+      const res = await fetch(`${this.baseUrl}/api/plants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ...data }),
+      })
 
-    if (error) throw new PlantServiceError(PlantServiceErrorCode.UNKNOWN, error.message)
-    return rowToPlant(inserted as PlantRow)
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new PlantServiceError(
+          PlantServiceErrorCode.UNKNOWN,
+          json.error || `HTTP error ${res.status}`,
+        )
+      }
+
+      return json.plant as Plant
+    } catch (err) {
+      if (err instanceof PlantServiceError) throw err
+      throw new PlantServiceError(
+        PlantServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al crear la planta',
+      )
+    }
   }
 
   // ── Actualizar planta ──────────────────────────────────────────────────────
@@ -75,78 +86,108 @@ export class PlantService implements IPlantService {
     plantId: string,
     data: Partial<Plant & { careSchedule: Partial<CareSchedule> }>,
   ): Promise<Plant> {
-    // Construye el objeto de actualización en snake_case
-    const updates: Partial<PlantRow> = {
-      ...(data.commonName !== undefined && { common_name: data.commonName }),
-      ...(data.species !== undefined && { species: data.species }),
-      ...(data.scientificName !== undefined && { scientific_name: data.scientificName }),
-      ...(data.acquisitionDate !== undefined && { acquisition_date: data.acquisitionDate }),
-      ...(data.plantType !== undefined && { plant_type: data.plantType }),
-      ...(data.location !== undefined && { location: data.location }),
-      ...(data.notes !== undefined && { notes: data.notes }),
-      ...(data.representativePhotoUrl !== undefined && { representative_photo_url: data.representativePhotoUrl }),
-      ...(data.careSchedule !== undefined && careScheduleToRow(data.careSchedule)),
-      ...(data.nextCareDates?.watering !== undefined && { next_watering_date: data.nextCareDates.watering }),
-      ...(data.nextCareDates?.fertilizing !== undefined && { next_fertilizing_date: data.nextCareDates.fertilizing }),
-      ...(data.nextCareDates?.pruning !== undefined && { next_pruning_date: data.nextCareDates.pruning }),
-      ...(data.nextCareDates?.repotting !== undefined && { next_repotting_date: data.nextCareDates.repotting }),
-    }
+    try {
+      const res = await fetch(`${this.baseUrl}/api/plants/${plantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
 
-    const { data: updated, error } = await this.db
-      .from('plants')
-      .update(updates)
-      .eq('id', plantId)
-      .select()
-      .single()
+      const json = await res.json().catch(() => ({}))
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        throw new PlantServiceError(PlantServiceErrorCode.NOT_FOUND, `Planta ${plantId} no encontrada.`)
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new PlantServiceError(PlantServiceErrorCode.NOT_FOUND, `Planta ${plantId} no encontrada.`)
+        }
+        throw new PlantServiceError(
+          PlantServiceErrorCode.UNKNOWN,
+          json.error || `HTTP error ${res.status}`,
+        )
       }
-      throw new PlantServiceError(PlantServiceErrorCode.UNKNOWN, error.message)
-    }
 
-    return rowToPlant(updated as PlantRow)
+      return json.plant as Plant
+    } catch (err) {
+      if (err instanceof PlantServiceError) throw err
+      throw new PlantServiceError(
+        PlantServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al actualizar la planta',
+      )
+    }
   }
 
   // ── Eliminar planta ────────────────────────────────────────────────────────
 
   async deletePlant(plantId: string): Promise<void> {
-    const { error } = await this.db
-      .from('plants')
-      .delete()
-      .eq('id', plantId)
+    try {
+      const res = await fetch(`${this.baseUrl}/api/plants/${plantId}`, {
+        method: 'DELETE',
+      })
 
-    if (error) throw new PlantServiceError(PlantServiceErrorCode.UNKNOWN, error.message)
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new PlantServiceError(
+          PlantServiceErrorCode.UNKNOWN,
+          json.error || `HTTP error ${res.status}`,
+        )
+      }
+    } catch (err) {
+      if (err instanceof PlantServiceError) throw err
+      throw new PlantServiceError(
+        PlantServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al eliminar la planta',
+      )
+    }
   }
 
   // ── Listar plantas del usuario ─────────────────────────────────────────────
 
   async getPlants(userId: string): Promise<Plant[]> {
-    const { data, error } = await this.db
-      .from('plants')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+    try {
+      const res = await fetch(`${this.baseUrl}/api/plants?userId=${encodeURIComponent(userId)}`)
 
-    if (error) throw new PlantServiceError(PlantServiceErrorCode.UNKNOWN, error.message)
-    return (data as PlantRow[]).map(rowToPlant)
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new PlantServiceError(
+          PlantServiceErrorCode.UNKNOWN,
+          json.error || `HTTP error ${res.status}`,
+        )
+      }
+
+      return (json.plants || []) as Plant[]
+    } catch (err) {
+      if (err instanceof PlantServiceError) throw err
+      throw new PlantServiceError(
+        PlantServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al listar las plantas',
+      )
+    }
   }
 
   // ── Buscar plantas (insensible a mayúsculas) ───────────────────────────────
 
   async searchPlants(userId: string, query: string): Promise<Plant[]> {
     const trimmed = query.trim()
-    if (!trimmed) return this.getPlants(userId)
+    try {
+      const url = `${this.baseUrl}/api/plants?userId=${encodeURIComponent(userId)}${trimmed ? `&search=${encodeURIComponent(trimmed)}` : ''}`
+      const res = await fetch(url)
 
-    const { data, error } = await this.db
-      .from('plants')
-      .select('*')
-      .eq('user_id', userId)
-      .or(`common_name.ilike.%${trimmed}%,species.ilike.%${trimmed}%`)
-      .order('created_at', { ascending: false })
+      const json = await res.json().catch(() => ({}))
 
-    if (error) throw new PlantServiceError(PlantServiceErrorCode.UNKNOWN, error.message)
-    return (data as PlantRow[]).map(rowToPlant)
+      if (!res.ok) {
+        throw new PlantServiceError(
+          PlantServiceErrorCode.UNKNOWN,
+          json.error || `HTTP error ${res.status}`,
+        )
+      }
+
+      return (json.plants || []) as Plant[]
+    } catch (err) {
+      if (err instanceof PlantServiceError) throw err
+      throw new PlantServiceError(
+        PlantServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al buscar plantas',
+      )
+    }
   }
 }

@@ -1,5 +1,8 @@
 import { AIErrorCode } from '@plant-care/core'
 import { callVisionAI } from '@/lib/ai-client'
+import { getDb } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
 
 const PROMPT = `
 Eres un experto en el cuidado de plantas. Analiza la imagen y responde ÚNICAMENTE en español con JSON válido (sin markdown).
@@ -72,14 +75,40 @@ export async function POST(request: Request): Promise<Response> {
       )
     }
 
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const generalStatus = parsed.generalStatus ?? 'Estado no determinado'
+    const detectedProblems = parsed.detectedProblems ?? []
+    const recommendations = parsed.recommendations ?? []
+
+    try {
+      const sql = getDb()
+      if (sql) {
+        await sql`
+          INSERT INTO analysis_reports (id, plant_id, image_url, general_status, detected_problems, recommendations, created_at)
+          VALUES (
+            ${id},
+            ${plantId},
+            ${imageUrl},
+            ${generalStatus},
+            ${detectedProblems},
+            ${recommendations},
+            ${now}
+          )
+        `
+      }
+    } catch (dbErr) {
+      console.warn('Aviso al guardar analysis_report en Neon:', dbErr)
+    }
+
     return Response.json({
-      id: crypto.randomUUID(),
+      id,
       plantId,
       imageUrl,
-      generalStatus: parsed.generalStatus ?? 'Estado no determinado',
-      detectedProblems: parsed.detectedProblems ?? [],
-      recommendations: parsed.recommendations ?? [],
-      createdAt: new Date().toISOString(),
+      generalStatus,
+      detectedProblems,
+      recommendations,
+      createdAt: now,
     }, { status: 200 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

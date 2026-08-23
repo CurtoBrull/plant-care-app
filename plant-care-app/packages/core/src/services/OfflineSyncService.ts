@@ -1,8 +1,6 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PendingChange, SyncResult } from '../models/offline'
 import type { StorageAdapter } from '../lib/storage-adapter'
 import { localStorageAdapter } from '../lib/storage-adapter'
-import { getSupabaseClient } from '../lib/supabase-client'
 
 // ---------------------------------------------------------------------------
 // Claves de almacenamiento local
@@ -16,15 +14,10 @@ const CACHE_KEY_PREFIX    = 'plant-care:cache:'
 // ---------------------------------------------------------------------------
 
 export interface IOfflineSyncService {
-  /** Encola un cambio pendiente en el almacenamiento local. */
   queueChange(change: PendingChange): Promise<void>
-  /** Sincroniza todos los cambios pendientes con Supabase al recuperar conexión. */
   flushPendingChanges(): Promise<SyncResult>
-  /** Carga datos cacheados cuando no hay conexión. */
   getCachedData<T>(key: string): Promise<T | null>
-  /** Persiste datos en caché local. */
   setCachedData<T>(key: string, data: T): Promise<void>
-  /** Retorna los cambios pendientes sin aplicar. */
   getPendingChanges(): Promise<PendingChange[]>
 }
 
@@ -33,11 +26,11 @@ export interface IOfflineSyncService {
 // ---------------------------------------------------------------------------
 
 export class OfflineSyncService implements IOfflineSyncService {
-  private readonly db:      SupabaseClient
+  private readonly baseUrl: string
   private readonly storage: StorageAdapter
 
-  constructor(options?: { client?: SupabaseClient; storage?: StorageAdapter }) {
-    this.db      = options?.client  ?? getSupabaseClient()
+  constructor(options?: { baseUrl?: string; storage?: StorageAdapter }) {
+    this.baseUrl = options?.baseUrl || ''
     this.storage = options?.storage ?? localStorageAdapter
   }
 
@@ -45,10 +38,8 @@ export class OfflineSyncService implements IOfflineSyncService {
 
   async queueChange(change: PendingChange): Promise<void> {
     const existing = await this._loadPendingChanges()
-    // Evitar duplicados por id
     const deduplicated = existing.filter((c) => c.id !== change.id)
     deduplicated.push(change)
-    // Ordenar por queuedAt para aplicar en orden cronológico
     deduplicated.sort((a, b) => a.queuedAt - b.queuedAt)
     await this.storage.setItem(PENDING_CHANGES_KEY, JSON.stringify(deduplicated))
   }
@@ -61,7 +52,6 @@ export class OfflineSyncService implements IOfflineSyncService {
 
     if (pending.length === 0) return result
 
-    // Aplicar en orden cronológico (last-write-wins por campo)
     const successIds: string[] = []
 
     for (const change of pending) {
@@ -75,7 +65,6 @@ export class OfflineSyncService implements IOfflineSyncService {
       }
     }
 
-    // Eliminar del queue los que se sincronizaron correctamente
     const remaining = pending.filter((c) => !successIds.includes(c.id))
     await this.storage.setItem(PENDING_CHANGES_KEY, JSON.stringify(remaining))
 
@@ -123,20 +112,30 @@ export class OfflineSyncService implements IOfflineSyncService {
 
     switch (operation) {
       case 'insert': {
-        const { error } = await this.db.from(table).insert(payload)
-        if (error) throw new Error(`[insert:${table}] ${error.message}`)
+        const res = await fetch(`${this.baseUrl}/api/${table}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) throw new Error(`[insert:${table}] HTTP error ${res.status}`)
         break
       }
       case 'update': {
         const { id, ...rest } = payload as { id: string } & Record<string, unknown>
-        const { error } = await this.db.from(table).update(rest).eq('id', id)
-        if (error) throw new Error(`[update:${table}] ${error.message}`)
+        const res = await fetch(`${this.baseUrl}/api/${table}/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rest),
+        })
+        if (!res.ok) throw new Error(`[update:${table}] HTTP error ${res.status}`)
         break
       }
       case 'delete': {
         const { id } = payload as { id: string }
-        const { error } = await this.db.from(table).delete().eq('id', id)
-        if (error) throw new Error(`[delete:${table}] ${error.message}`)
+        const res = await fetch(`${this.baseUrl}/api/${table}/${id}`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) throw new Error(`[delete:${table}] HTTP error ${res.status}`)
         break
       }
     }

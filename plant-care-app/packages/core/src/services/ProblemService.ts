@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Problem, CreateProblemInput } from '../models/problem'
-import { getSupabaseClient } from '../lib/supabase-client'
 
 // ---------------------------------------------------------------------------
 // Errores de dominio
@@ -23,34 +21,6 @@ export enum ProblemServiceErrorCode {
 }
 
 // ---------------------------------------------------------------------------
-// Tipo fila de la tabla problems
-// ---------------------------------------------------------------------------
-
-interface ProblemRow {
-  id: string
-  plant_id: string
-  type: string
-  description: string
-  detected_at: string
-  image_url: string | null
-  resolved: boolean
-  resolved_at: string | null
-}
-
-function rowToProblem(row: ProblemRow): Problem {
-  return {
-    id: row.id,
-    plantId: row.plant_id,
-    type: row.type,
-    description: row.description,
-    detectedAt: row.detected_at,
-    ...(row.image_url != null && { imageUrl: row.image_url }),
-    resolved: row.resolved,
-    ...(row.resolved_at != null && { resolvedAt: row.resolved_at }),
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Interfaz pública
 // ---------------------------------------------------------------------------
 
@@ -62,14 +32,14 @@ export interface IProblemService {
 }
 
 // ---------------------------------------------------------------------------
-// Implementación
+// Implementación con REST API (Neon PostgreSQL)
 // ---------------------------------------------------------------------------
 
 export class ProblemService implements IProblemService {
-  private readonly db: SupabaseClient
+  private readonly baseUrl: string
 
-  constructor(client?: SupabaseClient) {
-    this.db = client ?? getSupabaseClient()
+  constructor(options?: { baseUrl?: string }) {
+    this.baseUrl = options?.baseUrl || ''
   }
 
   // ── Crear registro de problema ─────────────────────────────────────────────
@@ -82,67 +52,98 @@ export class ProblemService implements IProblemService {
       throw new ProblemServiceError(ProblemServiceErrorCode.VALIDATION, 'La descripción es obligatoria.')
     }
 
-    const { data: row, error } = await this.db
-      .from('problems')
-      .insert({
-        plant_id:    plantId,
-        type:        data.type.trim(),
-        description: data.description.trim(),
-        detected_at: data.detectedAt,
-        image_url:   data.imageUrl ?? null,
-        resolved:    false,
-        resolved_at: null,
+    try {
+      const res = await fetch(`${this.baseUrl}/api/problems`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plantId, ...data }),
       })
-      .select()
-      .single()
 
-    if (error) throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, error.message)
-    return rowToProblem(row as ProblemRow)
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, json.error || `HTTP error ${res.status}`)
+      }
+
+      return json.problem as Problem
+    } catch (err) {
+      if (err instanceof ProblemServiceError) throw err
+      throw new ProblemServiceError(
+        ProblemServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al registrar problema',
+      )
+    }
   }
 
   // ── Listar problemas (detectedAt DESC) ────────────────────────────────────
 
   async getProblems(plantId: string): Promise<Problem[]> {
-    const { data, error } = await this.db
-      .from('problems')
-      .select('*')
-      .eq('plant_id', plantId)
-      .order('detected_at', { ascending: false })
+    try {
+      const res = await fetch(`${this.baseUrl}/api/problems?plantId=${encodeURIComponent(plantId)}`)
 
-    if (error) throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, error.message)
-    return (data as ProblemRow[]).map(rowToProblem)
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, json.error || `HTTP error ${res.status}`)
+      }
+
+      return (json.problems || []) as Problem[]
+    } catch (err) {
+      if (err instanceof ProblemServiceError) throw err
+      throw new ProblemServiceError(
+        ProblemServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al obtener problemas',
+      )
+    }
   }
 
   // ── Marcar como resuelto ──────────────────────────────────────────────────
 
   async markAsResolved(problemId: string, resolvedAt?: string): Promise<Problem> {
-    const timestamp = resolvedAt ?? new Date().toISOString()
+    try {
+      const res = await fetch(`${this.baseUrl}/api/problems/${problemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolvedAt }),
+      })
 
-    const { data: row, error } = await this.db
-      .from('problems')
-      .update({ resolved: true, resolved_at: timestamp })
-      .eq('id', problemId)
-      .select()
-      .single()
+      const json = await res.json().catch(() => ({}))
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        throw new ProblemServiceError(ProblemServiceErrorCode.NOT_FOUND, `Problema ${problemId} no encontrado.`)
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new ProblemServiceError(ProblemServiceErrorCode.NOT_FOUND, `Problema ${problemId} no encontrado.`)
+        }
+        throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, json.error || `HTTP error ${res.status}`)
       }
-      throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, error.message)
-    }
 
-    return rowToProblem(row as ProblemRow)
+      return json.problem as Problem
+    } catch (err) {
+      if (err instanceof ProblemServiceError) throw err
+      throw new ProblemServiceError(
+        ProblemServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al resolver problema',
+      )
+    }
   }
 
   // ── Eliminar registro ─────────────────────────────────────────────────────
 
   async deleteProblem(problemId: string): Promise<void> {
-    const { error } = await this.db
-      .from('problems')
-      .delete()
-      .eq('id', problemId)
+    try {
+      const res = await fetch(`${this.baseUrl}/api/problems/${problemId}`, {
+        method: 'DELETE',
+      })
 
-    if (error) throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, error.message)
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new ProblemServiceError(ProblemServiceErrorCode.UNKNOWN, json.error || `HTTP error ${res.status}`)
+      }
+    } catch (err) {
+      if (err instanceof ProblemServiceError) throw err
+      throw new ProblemServiceError(
+        ProblemServiceErrorCode.UNKNOWN,
+        err instanceof Error ? err.message : 'Error al eliminar problema',
+      )
+    }
   }
 }
